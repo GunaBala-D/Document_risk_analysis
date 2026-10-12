@@ -1,5 +1,7 @@
 # Document Risk Engine
 
+[![CI](https://github.com/GunaBala-D/Document_risk_analysis/actions/workflows/ci.yml/badge.svg)](https://github.com/GunaBala-D/Document_risk_analysis/actions/workflows/ci.yml)
+
 **Enterprise Document Risk Intelligence & Compliance Engine** — an end-to-end ML system that reads vendor
 contracts, extracts their commercial terms, predicts risk, detects anomalies and policy violations, explains
 *why*, and learns from validated human review.
@@ -339,18 +341,18 @@ docker compose restart api
 # dashboard http://localhost:8080 · API http://localhost:8000/docs · MLflow http://localhost:5000
 ```
 
-> **Verification status:** Docker was not available on the development machine, so the compose stack has
-> **not** been run end-to-end. What *was* verified: the MLflow server configuration used in compose
-> (PostgreSQL backend store, proxied artifacts, `--allowed-hosts`) with our registry code over HTTP; the
-> Dockerfile's sources and scripts statically. CI builds both images on every push.
+> **Verification status:** CI validates the compose file, builds both images and smoke-tests the backend
+> image (imports API, LightGBM, SHAP, MLflow, Tesseract bindings) on every push. The MLflow server
+> configuration used in compose (PostgreSQL backend store, proxied artifacts, `--allowed-hosts`) was tested
+> with our registry code over HTTP. The full `docker compose up` stack has **not** yet been run end-to-end
+> (Docker was not available on the development machine).
 
 ## 23. CI/CD
 
 `.github/workflows/ci.yml` — **lint** (ruff) · **test** (Tesseract installed, PostgreSQL service; unit, ML,
 API, integration; Alembic migration drift check) · **frontend** (`npm ci`, typecheck, build) · **docker**
 (compose config validation, backend + dashboard image builds, import smoke test). No deployment workflow —
-there is no deployment target to deploy to. *The workflow has not yet run on GitHub; every command in it has
-been run locally except the Docker build.*
+there is no deployment target to deploy to. All four jobs pass on GitHub Actions (see the badge above).
 
 ## 24. Local setup
 
