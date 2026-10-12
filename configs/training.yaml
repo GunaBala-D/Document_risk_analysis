@@ -1,0 +1,35 @@
+seed: 42
+test_size: 0.2
+cv_folds: 5
+search_iterations: 20
+selection_metric: f1_macro          # CV metric used to choose the production candidate
+simplicity_tie_margin: 0.01         # within this margin, prefer the simpler model family
+escalation_min_recall: 0.95         # tuned escalation threshold must keep HIGH+CRITICAL recall >= this
+family_complexity: [logistic_regression, random_forest, xgboost, lightgbm]   # simplest first
+
+search_spaces:
+  logistic_regression:
+    clf__C: [0.01, 0.03, 0.1, 0.3, 1.0, 3.0, 10.0]
+  random_forest:
+    clf__n_estimators: [200, 300, 500]
+    clf__max_depth: [null, 6, 10, 16]
+    clf__min_samples_leaf: [1, 2, 4, 8]
+    clf__max_features: ["sqrt", 0.5, 0.8]
+  xgboost:
+    clf__n_estimators: [150, 300, 500]
+    clf__max_depth: [3, 4, 5, 6]
+    clf__learning_rate: [0.03, 0.05, 0.1, 0.2]
+    clf__subsample: [0.7, 0.85, 1.0]
+    clf__colsample_bytree: [0.6, 0.8, 1.0]
+    clf__min_child_weight: [1, 3, 5]
+    clf__reg_lambda: [0.5, 1.0, 3.0]
+  lightgbm:
+    clf__n_estimators: [150, 300, 500]
+    clf__num_leaves: [7, 15, 31]
+    clf__learning_rate: [0.03, 0.05, 0.1]
+    clf__min_child_samples: [5, 10, 20]
+    clf__subsample: [0.7, 0.85, 1.0]
+    clf__subsample_freq: [1]
+    clf__colsample_bytree: [0.6, 0.8, 1.0]
+    clf__reg_lambda: [0.0, 1.0, 3.0]
+selection_recall_margin: 0.02     # CV recall must clear the quality-gate minimum by this margin

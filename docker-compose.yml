@@ -1,0 +1,119 @@
+# Document Risk Engine - local stack.
+#
+#   cp .env.example .env                                  # then set POSTGRES_PASSWORD
+#   docker compose up -d --build                           # postgres, mlflow, api, dashboard
+#   docker compose --profile bootstrap run --rm bootstrap  # first run only: data + training (~20-30 min)
+#   docker compose restart api                             # load the newly registered models
+#   open http://localhost:8080 (dashboard), :8000/docs (API), :5000 (MLflow)
+#
+# Optional local LLM:  docker compose --profile llm up -d ollama
+#                      docker compose exec ollama ollama pull llama3.2:3b
+# NOTE: this file was written without access to Docker on the development machine and has not
+# been run end-to-end there. CI builds both images on every push (see .github/workflows/ci.yml).
+
+x-backend-env: &backend-env
+  DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-dre}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-document_risk}
+  MLFLOW_TRACKING_URI: http://mlflow:5000
+  MLFLOW_EXPERIMENT: document-risk-engine
+  OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
+  OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2:3b}
+  LLM_ENABLED: ${LLM_ENABLED:-true}
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  SEED_ADMIN_KEY: ${SEED_ADMIN_KEY:-}
+  SEED_ANALYST_KEY: ${SEED_ANALYST_KEY:-}
+  SEED_RISK_MANAGER_KEY: ${SEED_RISK_MANAGER_KEY:-}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-dre}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-document_risk}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./scripts/docker/postgres-init.sql:/docker-entrypoint-initdb.d/10-mlflow-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  mlflow:
+    build: .
+    image: document-risk-engine-backend:latest
+    command: >
+      mlflow server --host 0.0.0.0 --port 5000
+      --backend-store-uri postgresql+psycopg://${POSTGRES_USER:-dre}:${POSTGRES_PASSWORD}@postgres:5432/mlflow
+      --serve-artifacts --artifacts-destination /mlartifacts
+      --allowed-hosts mlflow,mlflow:5000,localhost,localhost:5000,127.0.0.1,127.0.0.1:5000
+    volumes:
+      - mlartifacts:/mlartifacts
+    ports:
+      - "5000:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+  api:
+    image: document-risk-engine-backend:latest
+    environment: *backend-env
+    volumes:
+      - appdata:/app/data
+      - appartifacts:/app/artifacts
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mlflow:
+        condition: service_healthy
+    restart: unless-stopped
+
+  dashboard:
+    build: ./frontend
+    ports:
+      - "8080:8080"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  # One-off training job: docker compose --profile bootstrap run --rm bootstrap
+  bootstrap:
+    image: document-risk-engine-backend:latest
+    profiles: ["bootstrap"]
+    command: ["sh", "scripts/docker/bootstrap.sh"]
+    environment:
+      <<: *backend-env
+      N_CONTRACTS: ${N_CONTRACTS:-3000}
+      WORKERS: ${WORKERS:-4}
+    volumes:
+      - appdata:/app/data
+      - appartifacts:/app/artifacts
+    depends_on:
+      mlflow:
+        condition: service_healthy
+
+  # Optional local LLM: docker compose --profile llm up -d ollama
+  ollama:
+    image: ollama/ollama:0.6.8
+    profiles: ["llm"]
+    volumes:
+      - ollama:/root/.ollama
+    ports:
+      - "11434:11434"
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  mlartifacts:
+  appdata:
+  appartifacts:
+  ollama:

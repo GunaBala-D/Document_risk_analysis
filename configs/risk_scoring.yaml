@@ -1,0 +1,36 @@
+# Composite risk score configuration.
+# Starting weights are ASSUMPTIONS from the project brief, not proven optima.
+# training/validate_weights.py measures how alternatives rank contracts on held-out data;
+# the result is documented in docs/EVALUATION_REPORT.md. Changing weights is a policy decision.
+version: "rs-v1"
+
+weights:
+  ml: 0.40
+  anomaly: 0.25
+  compliance: 0.25
+  business: 0.10
+
+# Inclusive lower bounds on the 0-100 score.
+levels:
+  LOW: 0
+  MEDIUM: 31
+  HIGH: 61
+  CRITICAL: 81
+
+compliance:
+  severity_weights: {LOW: 0.10, MEDIUM: 0.25, HIGH: 0.50, CRITICAL: 0.80}
+  warning_factor: 0.5          # warnings count half as much as violations
+
+business:
+  exposure_floor_inr: 100000       # INR 1 Lakh  -> exposure 0
+  exposure_cap_inr: 100000000      # INR 10 Crore -> exposure 1 (log scale between)
+  exposure_weight: 0.6
+  urgency_weight: 0.4
+  urgency: {expired: 0.7, within_45_days: 1.0, within_90_days: 0.5}
+
+# Guardrails: deterministic floors applied after the weighted score.
+level_floors:
+  - when: critical_violation     # any CRITICAL compliance violation
+    min_level: HIGH
+  - when: ml_predicts_critical   # model's argmax class is CRITICAL
+    min_level: HIGH

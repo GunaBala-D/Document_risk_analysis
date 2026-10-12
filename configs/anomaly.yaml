@@ -1,0 +1,32 @@
+version: "an-v1"
+
+# Multivariate Isolation Forest
+isolation_forest:
+  n_estimators: 300
+  max_samples: 256
+  contamination: auto
+  random_state: 42
+  features:
+    - contract_value_log10
+    - payment_days
+    - contract_duration_months
+    - penalty_pct
+    - renewal_months
+    - vendor_contracts_last_90d
+    - value_vs_vendor_avg_log2     # derived: log2(value_vs_vendor_avg); 0 when no history
+  flag_percentile: 0.97            # anomaly_score (training-score percentile) above this => flagged
+
+# Vendor-behaviour checks against the vendor's own history (point-in-time)
+vendor_behavior:
+  min_history: 3
+  value_robust_z: 3.5              # |modified z-score| of log10(value) vs vendor history
+  mad_floor_log10: 0.05            # avoids divide-by-~0 for vendors with near-identical contracts
+  payment_days_increase: 30        # days above the vendor's median payment period ...
+                                   # ... AND longer than any earlier contract with this vendor
+  burst_contracts_90d: 3           # earlier contracts with the same vendor in the last 90 days ...
+  burst_rate_multiple: 2.5         # ... AND >= 2.5x the vendor's own normal 90-day rate
+  burst_baseline_min_contracts: 3  # older contracts needed to estimate that normal rate
+
+# Registry promotion: anomaly score must separate injected anomalous scenarios on the test split
+quality_gate:
+  min_roc_auc: 0.70

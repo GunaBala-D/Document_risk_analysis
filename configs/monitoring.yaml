@@ -1,0 +1,25 @@
+version: "mon-v1"
+
+drift:
+  min_samples: 30            # below this the drift report says "insufficient data" instead of guessing
+  psi_bins: 10
+  psi_warn: 0.1              # 0.1-0.2 moderate shift
+  psi_drift: 0.2             # >0.2 significant shift (common industry rule of thumb)
+  p_value: 0.01              # KS (numeric) / chi-square (binary) significance
+  dataset_drift_share: 0.3   # dataset drift if >= 30% of features drift
+  window_days: 30
+
+performance:
+  min_labels: 20             # validated feedback needed before performance is reported
+  degradation_tolerance: 0.05  # macro-F1 drop vs the model's test macro-F1 that counts as degradation
+
+retraining:
+  min_new_validated_labels: 50
+  # Trigger = enough new validated labels AND (significant data drift OR measured degradation),
+  #           OR measured degradation with at least min_labels_for_degradation_only labels.
+  min_labels_for_degradation_only: 30
+
+service:
+  window_hours: 24
+  latency_p95_slo_ms: 5000
+  error_rate_slo: 0.02

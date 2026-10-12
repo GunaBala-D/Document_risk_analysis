@@ -1,0 +1,19 @@
+# Model promotion policy. A candidate is promoted to @production only if EVERY check passes.
+# Metrics are computed on the frozen hold-out test set (data/processed/split.json), which
+# no training or tuning step ever sees, so candidates are compared on identical data.
+version: "qg-v1"
+
+absolute:                      # minimum bar regardless of the current production model
+  f1_macro: 0.75
+  pr_auc_macro: 0.80
+  high_risk_recall: 0.90       # HIGH + CRITICAL recall at argmax
+  critical_recall: 0.70
+  escalation_recall: 0.95      # recall at the tuned escalation threshold
+
+relative:                      # maximum allowed degradation vs current production
+  f1_macro: 0.01
+  pr_auc_macro: 0.01
+  high_risk_recall: 0.02
+  critical_recall: 0.05
+
+require_same_feature_schema: true   # candidate feature list must equal the serving feature registry

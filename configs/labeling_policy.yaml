@@ -1,0 +1,55 @@
+# Risk labeling policy (applied to ground-truth contract attributes).
+#
+# This is the documented, explainable annotation policy used to create training labels.
+# It mirrors how a procurement risk analyst scores a contract: each risk factor adds points,
+# total points map to a risk level. Labels are NEVER assigned randomly.
+#
+# Synthetic data caveat: because labels come from this policy, the classifier learns to
+# approximate this policy from *noisy extracted* features (OCR errors, phrasing variants,
+# point-in-time vendor history). In production, labels would come from reviewer-validated
+# feedback (see the human-in-the-loop workflow), which is exactly why that loop exists.
+version: "lp-v1"
+
+thresholds:
+  payment_days_policy: 60          # payment terms above this are against policy
+  payment_days_excessive: 90
+  penalty_pct_high: 10.0
+  penalty_pct_excessive: 20.0
+  value_vs_vendor_typical: 3.0     # value > 3x the vendor's typical contract value
+  approval_limit_inr: 10000000     # INR 1 Crore: CFO approval limit
+  expiry_warning_days: 45
+  renewal_months_max: 24
+  vendor_history_min_contracts: 3  # prior-violation factor needs enough history to be fair
+  vendor_violation_rate_some: 0.34 # share of earlier contracts with a policy violation
+  vendor_violation_rate_many: 0.5
+  splitting_window_days: 90       # >=2 earlier contracts from same vendor in 90 days ...
+  splitting_value_band: [0.8, 1.0] # ... each valued at 80-100% of the approval limit
+  one_sided_terms_min_keywords: 2
+
+points:
+  missing_termination_clause: 3
+  missing_liability_clause: 2
+  unlimited_liability: 3
+  missing_confidentiality_clause: 1
+  payment_days_over_policy: 1
+  payment_days_excessive: 2        # replaces payment_days_over_policy
+  penalty_high: 1
+  penalty_excessive: 2             # replaces penalty_high
+  value_unusual_for_vendor: 2
+  value_over_approval_limit: 1
+  expiry_within_warning: 1
+  long_auto_renewal: 1
+  non_approved_jurisdiction: 1
+  vendor_prior_violations_some: 1  # violation rate >= 34% of >= 3 earlier contracts
+  vendor_prior_violations_many: 2  # rate >= 50%; replaces _some
+  possible_contract_splitting: 2
+  one_sided_terms: 1
+
+# Inclusive lower bound of total points for each level.
+levels:
+  LOW: 0
+  MEDIUM: 2
+  HIGH: 4
+  CRITICAL: 7
+
+approved_jurisdictions: ["India"]

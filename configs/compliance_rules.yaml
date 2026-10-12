@@ -1,0 +1,168 @@
+# Deterministic compliance policy for vendor contracts (ruleset version below).
+#
+# Rule fields:
+#   id, name, description, severity (LOW|MEDIUM|HIGH|CRITICAL),
+#   type: violation (breaks policy) | warning (needs attention, not a breach),
+#   condition: {fact, op, value} | {all: [...]} | {any: [...]} | {not: {...}}
+#     ops: eq, ne, gt, gte, lt, lte, between, in, not_in, missing, present
+#   message: shown to the reviewer; may reference facts with {fact_name}
+#   remediation: recommended action
+#   supersedes: rule ids hidden when this rule fires (avoids double counting)
+#   enabled: true/false
+version: "cr-v1"
+
+rules:
+  - id: COMPLIANCE-001
+    name: Missing Termination Clause
+    description: Every vendor contract must allow the company to exit the agreement.
+    severity: HIGH
+    type: violation
+    condition: {fact: has_termination_clause, op: eq, value: 0}
+    message: No termination clause was found in the contract.
+    remediation: Add a termination-for-convenience clause with a notice period of 30-90 days before signing.
+    enabled: true
+
+  - id: COMPLIANCE-002
+    name: Payment Terms Exceed Policy
+    description: Payment terms longer than 60 days require treasury approval.
+    severity: MEDIUM
+    type: violation
+    condition: {fact: payment_days, op: gt, value: 60}
+    message: Payment period of {payment_days:.0f} days exceeds the 60-day policy limit.
+    remediation: Negotiate payment terms down to 60 days or obtain treasury approval.
+    enabled: true
+
+  - id: COMPLIANCE-003
+    name: Excessive Payment Terms
+    description: Payment terms longer than 90 days create working-capital and dispute risk.
+    severity: HIGH
+    type: violation
+    condition: {fact: payment_days, op: gt, value: 90}
+    message: Payment period of {payment_days:.0f} days is excessive (policy limit 60, hard limit 90).
+    remediation: Escalate to treasury; payment terms above 90 days are not approvable without CFO sign-off.
+    supersedes: [COMPLIANCE-002]
+    enabled: true
+
+  - id: COMPLIANCE-004
+    name: Contract Expiring Soon
+    description: Contracts expiring within 45 days need a renewal decision.
+    severity: LOW
+    type: warning
+    condition: {fact: days_to_expiry, op: between, value: [0, 45]}
+    message: Contract expires in {days_to_expiry:.0f} days.
+    remediation: Start the renewal or re-tender decision now to avoid an unmanaged lapse.
+    enabled: true
+
+  - id: COMPLIANCE-005
+    name: Contract Already Expired
+    description: The contract end date is in the past.
+    severity: MEDIUM
+    type: warning
+    condition: {fact: days_to_expiry, op: lt, value: 0}
+    message: Contract end date passed {days_to_expiry:.0f} days ago (negative = days since expiry).
+    remediation: Confirm whether services continue without a valid contract and regularise immediately.
+    enabled: true
+
+  - id: COMPLIANCE-006
+    name: Missing Liability Clause
+    description: Contracts must define limitation of liability.
+    severity: HIGH
+    type: violation
+    condition: {fact: has_liability_clause, op: eq, value: 0}
+    message: No limitation-of-liability clause was found.
+    remediation: Add a mutual liability cap (typically 12 months of fees) reviewed by Legal.
+    enabled: true
+
+  - id: COMPLIANCE-007
+    name: Unlimited Liability
+    description: Unlimited liability exposure is prohibited without board approval.
+    severity: CRITICAL
+    type: violation
+    condition: {fact: unlimited_liability, op: eq, value: 1}
+    message: The liability clause makes liability unlimited.
+    remediation: Replace with a capped liability clause; escalate to Legal before any signature.
+    enabled: true
+
+  - id: COMPLIANCE-008
+    name: Penalty Above Policy Limit
+    description: Penalties above 10% of contract value are disproportionate.
+    severity: MEDIUM
+    type: violation
+    condition: {fact: penalty_pct, op: gt, value: 10}
+    message: Penalty of {penalty_pct:.1f}% of contract value exceeds the 10% limit.
+    remediation: Cap liquidated damages at 10% of contract value or document the business justification.
+    enabled: true
+
+  - id: COMPLIANCE-009
+    name: Missing Confidentiality Clause
+    description: Vendors with access to company information must have confidentiality obligations.
+    severity: MEDIUM
+    type: violation
+    condition: {fact: has_confidentiality_clause, op: eq, value: 0}
+    message: No confidentiality clause was found.
+    remediation: Add a confidentiality clause or execute a separate NDA before data is shared.
+    enabled: true
+
+  - id: COMPLIANCE-010
+    name: Non-Approved Governing Law
+    description: Contracts must be governed by an approved jurisdiction (India).
+    severity: MEDIUM
+    type: violation
+    condition: {fact: non_approved_jurisdiction, op: eq, value: 1}
+    message: Governing law is {governing_law}, which is not an approved jurisdiction.
+    remediation: Change the governing law to India or obtain Legal approval for the foreign jurisdiction.
+    enabled: true
+
+  - id: COMPLIANCE-011
+    name: Long Auto-Renewal Period
+    description: Automatic renewals longer than 24 months lock the company in without review.
+    severity: MEDIUM
+    type: violation
+    condition: {fact: renewal_months, op: gt, value: 24}
+    message: Contract auto-renews for {renewal_months:.0f} months at a time.
+    remediation: Limit auto-renewal to 12 months or require an explicit renewal decision.
+    enabled: true
+
+  - id: COMPLIANCE-012
+    name: Value Requires CFO Approval
+    description: Contracts above INR 1 Crore require CFO approval evidence.
+    severity: LOW
+    type: warning
+    condition: {fact: contract_value_inr, op: gt, value: 10000000}
+    message: Contract value of INR {contract_value_inr:,.0f} is above the INR 1 Crore approval limit.
+    remediation: Attach CFO approval to the contract record before execution.
+    enabled: true
+
+  - id: COMPLIANCE-013
+    name: Missing Anti-Bribery / Compliance Clause
+    description: Vendor contracts should include a compliance-with-laws / anti-bribery clause.
+    severity: LOW
+    type: violation
+    condition: {fact: has_compliance_clause, op: eq, value: false}
+    message: No compliance-with-laws or anti-bribery clause was found.
+    remediation: Add the standard anti-bribery and compliance-with-laws clause.
+    enabled: true
+
+  - id: COMPLIANCE-014
+    name: Long Termination Notice
+    description: Termination notice above 90 days reduces the company's flexibility.
+    severity: LOW
+    type: violation
+    condition: {fact: termination_notice_days, op: gt, value: 90}
+    message: Termination requires {termination_notice_days:.0f} days notice.
+    remediation: Negotiate the notice period down to 90 days or less.
+    enabled: true
+
+  - id: COMPLIANCE-015
+    name: Missing Key Commercial Data
+    description: Contract value, end date and payment terms must be identifiable.
+    severity: LOW
+    type: warning
+    condition:
+      any:
+        - {fact: contract_value_inr, op: missing}
+        - {fact: end_date, op: missing}
+        - {fact: payment_days, op: missing}
+    message: One or more key commercial terms (value, end date, payment terms) could not be identified.
+    remediation: Manually verify the commercial terms; the document may be incomplete or poorly scanned.
+    enabled: true

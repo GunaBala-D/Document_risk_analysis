@@ -1,0 +1,28 @@
+[project]
+name = "document-risk-engine"
+version = "0.1.0"
+description = "Enterprise Document Risk Intelligence & Compliance Engine (vendor contracts, V1)"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+markers = [
+    "ocr: requires the Tesseract binary",
+    "ollama: requires a running Ollama server (skipped by default)",
+    "integration: end-to-end pipeline tests",
+]
+addopts = "-ra"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::FutureWarning",
+]
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+extend-exclude = ["frontend", "database/migrations/versions", ".venv", "notebooks"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM"]
+ignore = ["E501", "B008", "UP040"]

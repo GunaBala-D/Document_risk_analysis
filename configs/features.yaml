@@ -1,0 +1,258 @@
+# Feature registry.
+# Every model feature is declared here with its business meaning. The feature builder
+# (src/features/builder.py) must produce exactly these columns in this order; the model
+# quality gate rejects candidates trained on a different feature list (schema check).
+#
+# fv2 (vs fv1): added policy-limit indicator features. Evidence: the label diagnostic showed
+# the label is ~94% reconstructable from fv1 features, yet models under-fit the threshold
+# structure; indicators improved CV macro-F1 of logistic regression by ~0.03
+# (see docs/EVALUATION_REPORT.md, "Feature iteration").
+# fv3 (vs fv2): vendor identity key now canonicalises legal-form spellings instead of dropping
+# them, so different legal entities ("X LLP" vs "X Pvt Ltd") no longer share vendor history.
+# Same feature names, different semantics for vendor/behavioural features -> new version.
+version: "fv3"
+fx_to_inr: {INR: 1.0, USD: 83.0, EUR: 90.0}   # static rates; documented limitation
+approved_jurisdictions: ["India"]
+# Procurement policy limits used by indicator features (mirror configs/compliance_rules.yaml).
+policy_limits:
+  payment_days: 60
+  payment_days_hard: 90
+  penalty_pct: 10
+  expiry_warning_days: 45
+  approval_limit_inr: 10000000
+  renewal_months: 24
+
+risk_keywords:
+  - "sole discretion"
+  - "non-?refundable"
+  - "exclusive supplier"
+  - "irrevocabl"
+  - "waives? all claims"
+  - "without recourse"
+compliance_keywords:
+  - "anti-?bribery"
+  - "anti-?corruption"
+  - "data protection"
+  - "audit rights"
+  - "applicable laws"
+  - "sanctions"
+
+features:
+  # ---------------- contract ----------------
+  - name: contract_value_log10
+    value_format: inr_log10
+    label: Contract value
+    group: contract
+    type: float
+    source: entity:contract_value + entity:currency
+    definition: Total contract value converted to INR.
+    transformation: log10(value * fx_to_inr[currency]); NaN if not extracted
+  - name: contract_duration_months
+    label: Contract duration
+    group: contract
+    type: float
+    source: entity:start_date, entity:end_date
+    definition: Length of the contract term.
+    transformation: (end_date - start_date).days / 30.44
+  - name: payment_days
+    label: Payment period (days)
+    group: contract
+    type: float
+    source: entity:payment_days
+    definition: Days the customer has to pay an invoice.
+    transformation: identity; NaN if not extracted
+  - name: termination_notice_days
+    label: Termination notice (days)
+    group: contract
+    type: float
+    source: entity:termination_notice_days
+    definition: Notice period required to terminate.
+    transformation: identity; NaN if no termination clause
+  - name: renewal_months
+    label: Auto-renewal period (months)
+    group: contract
+    type: float
+    source: entity:renewal_months
+    definition: Length of each automatic renewal; 0 if no auto-renewal.
+    transformation: identity
+  - name: penalty_pct
+    value_format: pct_value
+    label: Penalty (% of value)
+    group: contract
+    type: float
+    source: entity:penalty_pct
+    definition: Liquidated damages / penalty as a percentage of contract value.
+    transformation: identity; amounts converted to % of contract value; 0 if no penalty clause
+  - name: days_to_expiry
+    label: Days to expiry
+    group: contract
+    type: float
+    source: entity:end_date, analysis date
+    definition: Days between the analysis date and contract end date (negative = expired).
+    transformation: (end_date - as_of).days
+  - name: non_approved_jurisdiction
+    label: Non-approved governing law
+    group: contract
+    type: binary
+    source: entity:governing_law
+    definition: 1 if the governing law is outside the approved list.
+    transformation: governing_law not in approved_jurisdictions
+  # ---------------- vendor (point-in-time history) ----------------
+  - name: vendor_prior_contracts
+    label: Vendor prior contract count
+    group: vendor
+    type: int
+    source: vendor history before as_of
+    definition: Number of earlier contracts with the same vendor.
+    transformation: count
+  - name: vendor_prior_avg_value_log10
+    value_format: inr_log10
+    label: Vendor average contract value
+    group: vendor
+    type: float
+    source: vendor history before as_of
+    definition: Average INR value of the vendor's earlier contracts.
+    transformation: log10(mean(value_inr)); NaN if no history
+  - name: vendor_prior_violation_count
+    label: Vendor previous violations
+    group: vendor
+    type: int
+    source: vendor history before as_of (compliance engine results)
+    definition: Earlier contracts of this vendor with at least one MEDIUM+ compliance violation.
+    transformation: count
+  - name: vendor_prior_violation_rate
+    value_format: percent
+    label: Vendor violation rate
+    group: vendor
+    type: float
+    source: vendor history before as_of (compliance engine results)
+    definition: Share of the vendor's earlier contracts with at least one MEDIUM+ compliance violation.
+    transformation: violation_count / prior_contracts; NaN if no history
+  - name: vendor_prior_high_risk_ratio
+    value_format: percent
+    label: Vendor previous high-risk share
+    group: vendor
+    type: float
+    source: vendor history before as_of (labels / reviewed predictions)
+    definition: Share of the vendor's earlier contracts rated HIGH or CRITICAL.
+    transformation: mean(is_high_risk); NaN if no history
+  # ---------------- behavioural ----------------
+  - name: value_vs_vendor_avg
+    value_format: ratio
+    label: Value vs vendor average
+    group: behavioral
+    type: float
+    source: contract value, vendor history
+    definition: How many times larger this contract is than the vendor's historical average.
+    transformation: value_inr / mean(prior value_inr); NaN if no history
+  - name: payment_days_vs_vendor_avg
+    value_format: delta_days
+    label: Payment days vs vendor average
+    group: behavioral
+    type: float
+    source: payment_days, vendor history
+    definition: Difference between this contract's payment period and the vendor's historical average.
+    transformation: payment_days - mean(prior payment_days); NaN if no history
+  - name: vendor_contracts_last_90d
+    label: Vendor contracts in last 90 days
+    group: behavioral
+    type: int
+    source: vendor history before as_of
+    definition: Contract frequency - earlier contracts with this vendor in the previous 90 days.
+    transformation: count(prior contracts with date >= as_of - 90d)
+  # ---------------- text ----------------
+  - name: missing_clause_count
+    label: Missing mandatory clauses
+    group: text
+    type: int
+    source: section detection
+    definition: Number of mandatory clauses (payment, termination, liability, confidentiality, jurisdiction) not found.
+    transformation: count
+  - name: has_termination_clause
+    value_format: presence
+    label: Termination clause
+    group: text
+    type: binary
+    source: section detection
+    definition: 1 if a termination clause was detected.
+    transformation: indicator
+  - name: has_liability_clause
+    value_format: presence
+    label: Liability clause
+    group: text
+    type: binary
+    source: section detection
+    definition: 1 if a liability clause was detected.
+    transformation: indicator
+  - name: has_confidentiality_clause
+    value_format: presence
+    label: Confidentiality clause
+    group: text
+    type: binary
+    source: section detection
+    definition: 1 if a confidentiality clause was detected.
+    transformation: indicator
+  - name: unlimited_liability
+    label: Unlimited liability language
+    group: text
+    type: binary
+    source: entity:liability_cap
+    definition: 1 if the liability clause makes liability unlimited.
+    transformation: indicator
+  - name: risk_keyword_count
+    label: One-sided term keywords
+    group: text
+    type: int
+    source: cleaned text
+    definition: Number of distinct one-sided / risky phrases (risk_keywords) present.
+    transformation: count of distinct regex matches
+  - name: compliance_keyword_count
+    label: Compliance keywords
+    group: text
+    type: int
+    source: cleaned text
+    definition: Number of distinct compliance-assurance phrases (compliance_keywords) present.
+    transformation: count of distinct regex matches
+  # ---------------- policy-limit indicators (fv2) ----------------
+  - name: payment_above_policy
+    label: Payment terms above policy
+    group: policy
+    type: binary
+    source: entity:payment_days, policy_limits.payment_days
+    definition: 1 if payment days exceed the 60-day policy limit.
+    transformation: payment_days > policy_limits.payment_days
+  - name: payment_above_hard_limit
+    label: Payment terms above hard limit
+    group: policy
+    type: binary
+    source: entity:payment_days, policy_limits.payment_days_hard
+    definition: 1 if payment days exceed the 90-day hard limit.
+    transformation: payment_days > policy_limits.payment_days_hard
+  - name: penalty_above_policy
+    label: Penalty above policy
+    group: policy
+    type: binary
+    source: entity:penalty_pct, policy_limits.penalty_pct
+    definition: 1 if the penalty exceeds 10% of contract value.
+    transformation: penalty_pct > policy_limits.penalty_pct
+  - name: expiry_within_warning
+    label: Expiring within 45 days
+    group: policy
+    type: binary
+    source: days_to_expiry, policy_limits.expiry_warning_days
+    definition: 1 if the contract expires within the warning window (and has not yet expired).
+    transformation: 0 <= days_to_expiry <= policy_limits.expiry_warning_days
+  - name: value_above_approval_limit
+    label: Value above approval limit
+    group: policy
+    type: binary
+    source: contract value, policy_limits.approval_limit_inr
+    definition: 1 if the INR contract value exceeds the CFO approval limit.
+    transformation: value_inr > policy_limits.approval_limit_inr
+  - name: renewal_above_max
+    label: Auto-renewal above maximum
+    group: policy
+    type: binary
+    source: entity:renewal_months, policy_limits.renewal_months
+    definition: 1 if each automatic renewal is longer than 24 months.
+    transformation: renewal_months > policy_limits.renewal_months
